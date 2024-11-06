@@ -1,0 +1,9 @@
+# Ignore sensitive files
+.streamlit/secrets.toml
+optimal-primer-440808-a4-37ec8ac20a8f.json
+
+# Ignore common OS and editor-specific files
+.DS_Store
+*.pyc
+__pycache__/
+.env
