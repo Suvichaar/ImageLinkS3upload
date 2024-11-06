@@ -15,9 +15,9 @@ sheets_service = build('sheets', 'v4', credentials=credentials)
 # Initialize AWS S3 client using Streamlit secrets
 s3_client = boto3.client(
     's3',
-    aws_access_key_id=st.secrets["AWS_ACCESS_KEY_ID"],
-    aws_secret_access_key=st.secrets["AWS_SECRET_ACCESS_KEY"],
-    region_name=st.secrets["AWS_REGION"]
+    aws_access_key_id=st.secrets["AWS"]["AWS_ACCESS_KEY_ID"],
+    aws_secret_access_key=st.secrets["AWS"]["AWS_SECRET_ACCESS_KEY"],
+    region_name=st.secrets["AWS"]["AWS_REGION"]
 )
 
 def upload_to_s3(url, bucket_name):
