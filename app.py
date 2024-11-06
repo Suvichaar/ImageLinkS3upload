@@ -21,15 +21,15 @@ s3_client = boto3.client(
     region_name=st.secrets["AWS"]["AWS_REGION"]
 )
 
-# Validate AWS bucket name format
+# Validate the S3 bucket name
 def validate_bucket_name(bucket_name):
-    # Bucket name must match the regex to be valid
-    if not re.match(r'^[a-zA-Z0-9.-_]{1,255}$', bucket_name):
-        st.error(f"Invalid bucket name: {bucket_name}. It must match the regex '^[a-zA-Z0-9.-_]{1,255}$'.")
+    # Valid S3 bucket name regex:
+    if not re.match(r'^[a-z0-9][a-z0-9.-_]{1,61}[a-z0-9]$', bucket_name):
+        st.error(f"Invalid bucket name: {bucket_name}. It must follow AWS S3 naming conventions.")
         return False
     return True
 
-# Function to upload image to S3
+# Upload image to S3 and return the S3 URL
 def upload_to_s3(url, bucket_name):
     try:
         response = requests.get(url)
@@ -49,12 +49,14 @@ def upload_to_s3(url, bucket_name):
         st.error(f"Failed to upload image to S3: {e}")
         return None
 
-# Function to process the Google Sheet
+# Process Google Sheet to upload images to S3
 def process_sheet(spreadsheet_id, bucket_name, source_column='A', target_column='B'):
-    if not validate_bucket_name(bucket_name):  # Check if bucket name is valid
+    sheet_range = f"{source_column}:{target_column}"
+    
+    # Validate bucket name
+    if not validate_bucket_name(bucket_name):
         return
     
-    sheet_range = f"{source_column}:{target_column}"
     try:
         sheet = sheets_service.spreadsheets().values().get(
             spreadsheetId=spreadsheet_id, range=sheet_range
@@ -67,15 +69,12 @@ def process_sheet(spreadsheet_id, bucket_name, source_column='A', target_column=
         for i, row in enumerate(rows):
             if len(row) > source_index and row[source_index]:  # Check if URL exists in source column
                 url = row[source_index]
-                if url and url.startswith('http'):  # Simple check for URL validity
-                    s3_url = upload_to_s3(url, bucket_name)
-                    if s3_url:
-                        if len(row) <= target_index:
-                            row.extend([''] * (target_index + 1 - len(row)))  # Ensure row has enough columns
-                        row[target_index] = s3_url
-                        st.write(f"Uploaded {url} to {s3_url}")
-                else:
-                    st.warning(f"Invalid URL in row {i + 1}: {url}")
+                s3_url = upload_to_s3(url, bucket_name)
+                if s3_url:
+                    if len(row) <= target_index:
+                        row.extend([''] * (target_index + 1 - len(row)))  # Ensure row has enough columns
+                    row[target_index] = s3_url
+                    st.write(f"Uploaded {url} to {s3_url}")
         
         # Update Google Sheet with new URLs
         sheets_service.spreadsheets().values().update(
