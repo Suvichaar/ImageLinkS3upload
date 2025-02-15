@@ -23,7 +23,6 @@ s3_client = boto3.client(
 
 # Validate the S3 bucket name
 def validate_bucket_name(bucket_name):
-    # Valid S3 bucket name regex:
     if not re.match(r'^[a-z0-9][a-z0-9.-_]{1,61}[a-z0-9]$', bucket_name):
         st.error(f"Invalid bucket name: {bucket_name}. It must follow AWS S3 naming conventions.")
         return False
@@ -33,15 +32,14 @@ def validate_bucket_name(bucket_name):
 def upload_to_s3(url, bucket_name):
     try:
         response = requests.get(url)
-        response.raise_for_status()  # Check if the request was successful
-        key = str(uuid.uuid4())  # Generate a unique key
+        response.raise_for_status()
+        key = str(uuid.uuid4())
         s3_client.put_object(
             Bucket=bucket_name, 
             Key=key, 
             Body=response.content, 
             ContentType=response.headers['Content-Type']
         )
-        # Use the custom domain instead of the default S3 URL
         return f'https://media.suvichaar.org/{key}'
     except requests.exceptions.RequestException as e:
         st.error(f"Failed to download image from {url}: {e}")
@@ -50,22 +48,29 @@ def upload_to_s3(url, bucket_name):
         st.error(f"Failed to upload image to S3: {e}")
         return None
 
+# Convert column letter to index (A -> 0, B -> 1, etc.)
+def column_letter_to_index(column_letter):
+    column_letter = column_letter.upper()
+    index = 0
+    for char in column_letter:
+        index = index * 26 + (ord(char) - ord('A') + 1)
+    return index - 1  # Convert to zero-based index
+
 # Process Google Sheet to upload images to S3
 def process_sheet(spreadsheet_id, bucket_name, source_column='A', target_column='B'):
-    sheet_range = f"{source_column}:{target_column}"
-    
-    # Validate bucket name
-    if not validate_bucket_name(bucket_name):
-        return
-    
     try:
-        sheet = sheets_service.spreadsheets().values().get(
-            spreadsheetId=spreadsheet_id, range=sheet_range
-        ).execute()
-        rows = sheet.get('values', [])
+        source_index = column_letter_to_index(source_column)
+        target_index = column_letter_to_index(target_column)
 
-        source_index = ord(source_column.upper()) - ord('A')
-        target_index = ord(target_column.upper()) - ord('A')
+        sheet_data = sheets_service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id, range=f"{source_column}:{target_column}"
+        ).execute()
+
+        rows = sheet_data.get('values', [])
+
+        if not rows:
+            st.warning("No data found in the specified range.")
+            return
 
         for i, row in enumerate(rows):
             if len(row) > source_index and row[source_index]:  # Check if URL exists in source column
@@ -73,34 +78,34 @@ def process_sheet(spreadsheet_id, bucket_name, source_column='A', target_column=
                 s3_url = upload_to_s3(url, bucket_name)
                 if s3_url:
                     if len(row) <= target_index:
-                        row.extend([''] * (target_index + 1 - len(row)))  # Ensure row has enough columns
+                        row.extend([''] * (target_index + 1 - len(row)))  # Ensure enough columns
                     row[target_index] = s3_url
-                    st.write(f"Uploaded {url} to {s3_url}")
-        
-        # Update Google Sheet with new URLs
+                    st.write(f"Uploaded {url} → {s3_url}")
+
+        # Update Google Sheet with new S3 URLs
         sheets_service.spreadsheets().values().update(
             spreadsheetId=spreadsheet_id,
-            range=sheet_range,
+            range=f"{source_column}:{target_column}",
             valueInputOption='RAW',
             body={'values': rows}
         ).execute()
+
         st.success("Sheet updated successfully with S3 URLs.")
-    
+
     except Exception as e:
         st.error(f"Error processing sheet: {e}")
 
-# Streamlit Interface
-st.title("Image Uploader")
+# Streamlit UI
+st.title("Image Uploader to S3")
 
-# Input fields
-spreadsheet_id = st.text_input("Spreadsheet ID")
-bucket_name = st.text_input("Bucket Name")
-source_column = st.text_input("Source Column (default A)", "A")
-target_column = st.text_input("Target Column (default B)", "B")
+spreadsheet_id = st.text_input("Google Spreadsheet ID")
+bucket_name = st.text_input("S3 Bucket Name")
+source_column = st.text_input("Source Column (default: A)", "A").strip().upper()
+target_column = st.text_input("Target Column (default: B)", "B").strip().upper()
 
-# Button to trigger upload process
 if st.button("Start Upload"):
     if spreadsheet_id and bucket_name:
-        process_sheet(spreadsheet_id, bucket_name, source_column, target_column)
+        if validate_bucket_name(bucket_name):
+            process_sheet(spreadsheet_id, bucket_name, source_column, target_column)
     else:
         st.error("Please provide both Spreadsheet ID and Bucket Name.")
