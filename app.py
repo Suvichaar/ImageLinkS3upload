@@ -29,19 +29,20 @@ def validate_bucket_name(bucket_name):
         return False
     return True
 
-# Upload image to S3 and return the S3 URL
+# Upload image to S3 and return the custom domain URL
 def upload_to_s3(url, bucket_name):
     try:
         response = requests.get(url)
         response.raise_for_status()  # Check if the request was successful
-        key = str(uuid.uuid4())
+        key = str(uuid.uuid4())  # Generate a unique key
         s3_client.put_object(
             Bucket=bucket_name, 
             Key=key, 
             Body=response.content, 
             ContentType=response.headers['Content-Type']
         )
-        return f'https://{bucket_name}.s3.amazonaws.com/{key}'
+        # Use the custom domain instead of the default S3 URL
+        return f'https://media.suvichaar.org/{key}'
     except requests.exceptions.RequestException as e:
         st.error(f"Failed to download image from {url}: {e}")
         return None
